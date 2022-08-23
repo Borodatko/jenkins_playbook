@@ -49,8 +49,8 @@
       path: "{{ directory }}"
       state: directory
       mode: '0755'
-      owner: jenkins
-      group: jenkins
+      owner: "{{ username }}"
+      group: "{{ username }}"
 
 
 - name: Jenkins Installation
@@ -59,7 +59,9 @@
 
   - name: Install repo key
     become: true
-    command: curl -fsSL "{{ key_url }}" | tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+    ansible.builtin.apt_key:
+      url: "{{ key_url }}"
+      state: present
 
   - name: Add Jenkins repo
     become: true
@@ -84,16 +86,17 @@
       generate_ssh_key: yes
       ssh_key_bits: 2048
       ssh_key_file: /var/lib/jenkins/.ssh/id_rsa
+    register: ssh_key_info
 
   - name: Edit known_hosts file
     become: true
-    become_user: "{{ username }}"
     known_hosts:
       name: "{{ hostvars[item].ansible_host }}"
       state: present
       key: "{{ lookup('pipe', 'ssh-keyscan {{ hostvars[item].ansible_host }}') }}"
       hash_host: true
-    with_items: "{{ groups.agent }}"
+      path: /var/lib/jenkins/.ssh/known_hosts
+    with_items: "agent"
 
 
 - name: Jenkins Agent Configuration
@@ -120,15 +123,24 @@
   hosts: master
   tasks:
 
-  - name: Wait 30 seconds
+  - name: Wait 20 seconds
     wait_for:
-      timeout=30
+      timeout=20
+
+  - name: Check file
+    become: true
+    ansible.builtin.stat:
+      path: "/var/lib/jenkins/secrets/initialAdminPassword"
+    register: script
 
   - name: Init admin password
-    shell: cat /var/lib/jenkins/secrets/initialAdminPassword
+    become: true
+    command: 'cat /var/lib/jenkins/secrets/initialAdminPassword'
     changed_when: false
     register: result
+    when: script.stat.exists
 
   - name: Print admin password
     debug:
       var: result.stdout
+    when: script.stat.exists
