@@ -1,0 +1,134 @@
+---
+
+- name: Preparing hosts
+  hosts: all
+  tasks:
+
+  - name: Edit /etc/profile
+    become: true
+    blockinfile:
+      path: /etc/profile
+      block: |
+        export HISTSIZE=10000
+        export HISTTIMEFORMAT="%h %d %H:%M:%S "
+        PROMPT_COMMAND='history -a'
+        export HISTIGNORE="ls:ll:history:w:htop:pwd"
+
+  - name: Update repository && upgrade packages
+    become: true
+    ansible.builtin.apt:
+      name: "*"
+      state: latest
+      update_cache: yes
+
+  - name: Install Packages
+    become: true
+    ansible.builtin.apt:
+      pkg:
+        - fontconfig
+        - openjdk-11-jre
+        - gnupg
+        - gnupg2
+      state: latest
+
+  - name: Rename Hostnames
+    become: true
+    ansible.builtin.hostname:
+      name: "{{ inventory_hostname }}"
+
+  - name: Add user
+    become: true
+    ansible.builtin.user:
+      name: "{{ username }}"
+      shell: /bin/bash
+      home: /var/lib/jenkins
+
+  - name: Create directory
+    become: true
+    ansible.builtin.file:
+      path: "{{ directory }}"
+      state: directory
+      mode: '0755'
+      owner: jenkins
+      group: jenkins
+
+
+- name: Jenkins Installation
+  hosts: master
+  tasks:
+
+  - name: Install repo key
+    become: true
+    command: curl -fsSL "{{ key_url }}" | tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+
+  - name: Add Jenkins repo
+    become: true
+    ansible.builtin.apt_repository:
+      repo: "{{ repo_string }}"
+      state: present 
+      filename: jenkins
+      update_cache: yes
+
+  - name: Install Jenkins
+    become: true
+    ansible.builtin.apt:
+      pkg:
+        - jenkins
+        - git
+      state: latest
+
+  - name: Genereate SSH Key on Master
+    become: true
+    ansible.builtin.user:
+      name: "{{ username }}"
+      generate_ssh_key: yes
+      ssh_key_bits: 2048
+      ssh_key_file: /var/lib/jenkins/.ssh/id_rsa
+
+  - name: Edit known_hosts file
+    become: true
+    become_user: "{{ username }}"
+    known_hosts:
+      name: "{{ hostvars[item].ansible_host }}"
+      state: present
+      key: "{{ lookup('pipe', 'ssh-keyscan {{ hostvars[item].ansible_host }}') }}"
+      hash_host: true
+    with_items: "{{ groups.agent }}"
+
+
+- name: Jenkins Agent Configuration
+  hosts: agent
+  tasks:
+
+  - name: Add master publickey
+    authorized_key:
+      user: "{{ username }}"
+      state: present
+      key: "{{ hostvars['master']['ssh_key_info']['ssh_public_key'] }}"
+
+  - name: Install Packages
+    become: true
+    ansible.builtin.apt:
+      pkg:
+        - docker
+        - git
+        - python3-pip
+      state: latest
+
+
+- name: Jenkins Configuration
+  hosts: master
+  tasks:
+
+  - name: Wait 30 seconds
+    wait_for:
+      timeout=30
+
+  - name: Init admin password
+    shell: cat /var/lib/jenkins/secrets/initialAdminPassword
+    changed_when: false
+    register: result
+
+  - name: Print admin password
+    debug:
+      var: result.stdout

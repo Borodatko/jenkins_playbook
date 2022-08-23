@@ -1,0 +1,5 @@
+---
+username: "jenkins"
+directory: "/opt/jenkins/"
+key_url: "https://pkg.jenkins.io/debian-stable/jenkins.io.key"
+repo_string: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
