@@ -104,6 +104,7 @@
   tasks:
 
   - name: Add master publickey
+    become: true
     authorized_key:
       user: "{{ username }}"
       state: present
