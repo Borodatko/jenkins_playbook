@@ -96,6 +96,7 @@
 
   - name: Edit known_hosts file
     become: true
+    become_user: jenkins
     known_hosts:
       name: "{{ hostvars[item].ansible_host }}"
       state: present
