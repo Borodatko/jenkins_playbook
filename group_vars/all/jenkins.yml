@@ -1,5 +1,4 @@
 ---
 username: "jenkins"
+usergroup: "jenkins"
 directory: "/opt/jenkins/"
-key_url: "https://pkg.jenkins.io/debian-stable/jenkins.io.key"
-repo_string: "deb https://pkg.jenkins.io/debian-stable binary/"

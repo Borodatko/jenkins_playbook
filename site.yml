@@ -9,6 +9,7 @@
     blockinfile:
       path: /etc/profile
       block: |
+        shopt -s histappend
         export HISTSIZE=10000
         export HISTTIMEFORMAT="%h %d %H:%M:%S "
         PROMPT_COMMAND='history -a'
@@ -50,7 +51,7 @@
       state: directory
       mode: '0755'
       owner: "{{ username }}"
-      group: "{{ username }}"
+      group: "{{ usergroup }}"
 
 
 - name: Jenkins Installation
@@ -60,13 +61,13 @@
   - name: Install repo key
     become: true
     ansible.builtin.apt_key:
-      url: "{{ key_url }}"
+      url: "https://pkg.jenkins.io/debian-stable/jenkins.io.key"
       state: present
 
   - name: Add Jenkins repo
     become: true
     ansible.builtin.apt_repository:
-      repo: "{{ repo_string }}"
+      repo: "deb https://pkg.jenkins.io/debian-stable binary/"
       state: present 
       filename: jenkins
       update_cache: yes
@@ -78,6 +79,11 @@
         - jenkins
         - git
       state: latest
+
+  - name: Enable Jenkins
+    ansible.builtin.systemd:
+      name: jenkins
+      enabled: true
 
   - name: Genereate SSH Key on Master
     become: true
@@ -114,10 +120,64 @@
     become: true
     ansible.builtin.apt:
       pkg:
-        - docker
         - git
         - python3-pip
+        - ca-certificates
+        - curl
+        - gnupg
+        - lsb-release
       state: latest
+
+  - name: Upgrade pip
+    ansible.builtin.pip:
+      name: pip
+      state: latest
+      executable: pip3
+      extra_args: '--upgrade'
+    vars:
+      ansible_python_interpreter: /usr/bin/python3.7
+
+  - name: Install Ansible
+    ansible.builtin.pip:
+      name: ansible
+      state: present
+      executable: pip3
+    vars:
+      ansible_python_interpreter: /usr/bin/python3.7
+
+  - name: Install Docker repo key
+    become: true
+    ansible.builtin.apt_key:
+      url: "https://download.docker.com/linux/debian/gpg"
+      state: present
+
+  - name: Add Docker repo
+    become: true
+    ansible.builtin.apt_repository:
+      repo: "deb https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+      filename: docker
+      state: present
+      update_cache: true
+
+  - name: Install Docker
+    become: true
+    ansible.builtin.apt:
+      pkg:
+        - docker-ce
+      state: latest
+
+  - name: Add jenkins user to docker group
+    become: true
+    ansible.builtin.user:
+      name: "{{ username }}"
+      groups: docker
+
+  - name: Restart docker
+    become: true
+    ansible.builtin.systemd:
+      name: docker
+      state: restarted
+      enabled: true
 
 
 - name: Jenkins Configuration
@@ -136,7 +196,7 @@
 
   - name: Init admin password
     become: true
-    command: 'cat /var/lib/jenkins/secrets/initialAdminPassword'
+    command: "cat /var/lib/jenkins/secrets/initialAdminPassword"
     changed_when: false
     register: result
     when: script.stat.exists
