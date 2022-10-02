@@ -97,11 +97,12 @@
       name: jenkins
       state: latest
 
-  - name: Enable Jenkins
+  - name: Start Jenkins
     become: true
     ansible.builtin.systemd:
       name: jenkins
       enabled: true
+      state: started
 
   - name: Genereate SSH Key on Master
     become: true
@@ -153,7 +154,7 @@
       name: pip
       state: latest
       executable: pip3
-      extra_args: '--upgrade'
+      extra_args: --upgrade
     vars:
       ansible_python_interpreter: /usr/bin/python3.6
 

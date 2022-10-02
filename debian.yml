@@ -80,10 +80,11 @@
         - git
       state: latest
 
-  - name: Enable Jenkins
+  - name: Start Jenkins
     ansible.builtin.systemd:
       name: jenkins
       enabled: true
+      state: started
 
   - name: Genereate SSH Key on Master
     become: true
