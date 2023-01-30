@@ -1,246 +1,249 @@
 ---
-
 - name: Preparing hosts
   hosts: all
   tasks:
 
-  - name: Set timezone
-    become: true
-    community.general.timezone:
-      name: Europe/Moscow
+    - name: Set timezone
+      become: true
+      community.general.timezone:
+        name: Europe/Moscow
 
-  - name: Firewall - Disable SELinux
-    become: true
-    selinux:
-      state: disabled
+    - name: Firewall - Disable SELinux
+      become: true
+      ansible.posix.selinux:
+        state: disabled
 
-  - name: Firewall - Stop firewalld
-    become: true
-    ansible.builtin.systemd:
-      name: firewalld
-      state: stopped
-      enabled: no
+    - name: Firewall - Stop firewalld
+      become: true
+      ansible.builtin.systemd:
+        name: firewalld
+        state: stopped
+        enabled: false
 
-  - name: Edit /etc/profile
-    become: true
-    blockinfile:
-      path: /etc/profile
-      block: |
-        shopt -s histappend
-        export HISTSIZE=10000
-        export HISTTIMEFORMAT="%h %d %H:%M:%S "
-        PROMPT_COMMAND='history -a'
-        export HISTIGNORE="ls:ll:history:w:htop:pwd"
+    - name: Edit /etc/profile
+      become: true
+      ansible.builtin.blockinfile:
+        path: /etc/profile
+        block: |
+          shopt -s histappend
+          export HISTSIZE=10000
+          export HISTTIMEFORMAT="%h %d %H:%M:%S "
+          PROMPT_COMMAND='history -a'
+          export HISTIGNORE="ls:ll:history:w:htop:pwd"
 
-  - name: Update repository && upgrade packages
-    become: true
-    ansible.builtin.yum:
-      name: "*"
-      state: latest
+    - name: Update repository && upgrade packages
+      become: true
+      ansible.builtin.yum:
+        name: "*"
+        state: present
 
-  - name: Install Packages
-    become: true
-    ansible.builtin.yum:
-      name:
-        - java-11-openjdk
-        - python36
-      state: latest
+    - name: Install Packages
+      become: true
+      ansible.builtin.yum:
+        name:
+          - java-11-openjdk
+          - python36
+        state: present
 
-  - name: Rename Hostnames
-    become: true
-    ansible.builtin.hostname:
-      name: "{{ inventory_hostname }}"
+    - name: Rename Hostnames
+      become: true
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
 
-  - name: Add user
-    become: true
-    ansible.builtin.user:
-      name: "{{ username }}"
-      shell: /bin/bash
-      home: /var/lib/jenkins
+    - name: Add user
+      become: true
+      ansible.builtin.user:
+        name: "{{ username }}"
+        shell: /bin/bash
+        home: /var/lib/jenkins
 
-  - name: Create directory
-    become: true
-    ansible.builtin.file:
-      path: "{{ directory }}"
-      state: directory
-      mode: '0755'
-      owner: "{{ username }}"
-      group: "{{ usergroup }}"
+    - name: Create directory
+      become: true
+      ansible.builtin.file:
+        path: "{{ directory }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ username }}"
+        group: "{{ usergroup }}"
 
 
 - name: Jenkins Installation
   hosts: master
   tasks:
 
-  - name: Add Jenkins repo
-    become: true
-    ansible.builtin.yum_repository:
-      name: jenkins
-      description: Jenkins-Stable
-      baseurl: http://pkg.jenkins.io/redhat-stable
+    - name: Add Jenkins repo
+      become: true
+      ansible.builtin.yum_repository:
+        name: jenkins
+        description: Jenkins-Stable
+        baseurl: http://pkg.jenkins.io/redhat-stable
 
-  - name: Import key
-    become: true
-    ansible.builtin.rpm_key:
-      state: present
-      key: https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+    - name: Import key
+      become: true
+      ansible.builtin.rpm_key:
+        state: present
+        key: https://pkg.jenkins.io/redhat-stable/jenkins.io.key
 
-  - name: Update Yum
-    become: true
-    ansible.builtin.yum:
-      name: "*"
-      state: latest
+    - name: Update Yum
+      become: true
+      ansible.builtin.yum:
+        name: "*"
+        state: present
 
-  - name: Install Jenkins
-    become: true
-    ansible.builtin.yum:
-      name: jenkins
-      state: latest
+    - name: Install Jenkins
+      become: true
+      ansible.builtin.yum:
+        name: jenkins
+        state: present
 
-  - name: Start Jenkins
-    become: true
-    ansible.builtin.systemd:
-      name: jenkins
-      enabled: true
-      state: started
+    - name: Start Jenkins
+      become: true
+      ansible.builtin.systemd:
+        name: jenkins
+        enabled: true
+        state: started
 
-  - name: Genereate SSH Key on Master
-    become: true
-    ansible.builtin.user:
-      name: "{{ username }}"
-      generate_ssh_key: yes
-      ssh_key_bits: 2048
-      ssh_key_file: /var/lib/jenkins/.ssh/id_rsa
-    register: ssh_key_info
+    - name: Genereate SSH Key on Master
+      become: true
+      ansible.builtin.user:
+        name: "{{ username }}"
+        generate_ssh_key: true
+        ssh_key_bits: 2048
+        ssh_key_file: /var/lib/jenkins/.ssh/id_rsa
+      register: ssh_key_info
 
-  - name: Edit known_hosts file
-    become: true
-    become_user: jenkins
-    known_hosts:
-      name: "{{ hostvars[item].ansible_host }}"
-      state: present
-      key: "{{ lookup('pipe', 'ssh-keyscan {{ hostvars[item].ansible_host }}') }}"
-      hash_host: true
-      path: /var/lib/jenkins/.ssh/known_hosts
-    with_items: "agent"
+    - name: Edit known_hosts file
+      become: true
+      become_user: jenkins
+      ansible.builtin.known_hosts:
+        name: "{{ hostvars[item].ansible_host }}"
+        state: present
+        key: "{{ lookup('pipe', 'ssh-keyscan {{ hostvars[item].ansible_host }}') }}"
+        hash_host: true
+        path: /var/lib/jenkins/.ssh/known_hosts
+      with_items:
+        - agent
 
 
 - name: Jenkins Agent Configuration
   hosts: agent
   tasks:
 
-  - name: Add master publickey
-    become: true
-    authorized_key:
-      user: "{{ username }}"
-      state: present
-      key: "{{ hostvars['master']['ssh_key_info']['ssh_public_key'] }}"
+    - name: Add master publickey
+      become: true
+      ansible.posix.authorized_key:
+        user: "{{ username }}"
+        state: present
+        key: "{{ hostvars['master']['ssh_key_info']['ssh_public_key'] }}"
 
-  - name: Install Packages
-    become: true
-    ansible.builtin.yum:
-      name:
-        - git
-        - python3-pip
-        - python36-pip
-        - ca-certificates
-        - curl
-        - python3-libselinux
-      state: latest
+    - name: Install Packages
+      become: true
+      ansible.builtin.yum:
+        name:
+          - git
+          - python3-pip
+          - python36-pip
+          - ca-certificates
+          - curl
+          - python3-libselinux
+        state: present
 
-  - name: Upgrade pip
-    become: true
-    ansible.builtin.pip:
-      name: pip
-      state: latest
-      executable: pip3
-      extra_args: --upgrade
-    vars:
-      ansible_python_interpreter: /usr/bin/python3.6
+    - name: Upgrade pip
+      become: true
+      ansible.builtin.pip:
+        name: pip
+        state: present
+        executable: pip3
+        extra_args: --upgrade
+      vars:
+        ansible_python_interpreter: /usr/bin/python3.6
 
-  - name: Install Ansible
-    become: true
-    become_user: "{{ username }}"
-    ansible.builtin.pip:
-      name:
-        - ansible
-        - ansible-lint<6.0
-        - molecule==3.4.0
-        - molecule_docker
-        - docker
-        - yamllint
-      state: present
-      executable: pip3
-    vars:
-      ansible_python_interpreter: /usr/bin/python3.6
+    - name: Install Ansible
+      become: true
+      become_user: "{{ username }}"
+      ansible.builtin.pip:
+        name:
+          - ansible
+          - ansible-lint<6.0
+          - molecule==3.4.0
+          - molecule_docker
+          - docker
+          - yamllint
+        state: present
+        executable: pip3
+      vars:
+        ansible_python_interpreter: /usr/bin/python3.6
 
-  - name: Add Docker repo
-    become: true
-    ansible.builtin.copy:
-      src: files/docker-ce.repo
-      dest: /etc/yum.repos.d/docker-ce.repo
+    - name: Add Docker repo
+      become: true
+      ansible.builtin.copy:
+        src: files/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+        mode: '0644'
 
-  - name: Update Yum
-    become: true
-    ansible.builtin.yum:
-      name: "*"
-      state: latest
+    - name: Update Yum
+      become: true
+      ansible.builtin.yum:
+        name: "*"
+        state: present
 
-  - name: Install Docker
-    become: true
-    ansible.builtin.yum:
-      name:
-        - docker-ce
-        - docker-ce-cli
-        - containerd.io
-        - docker-compose-plugin
-      state: latest
+    - name: Install Docker
+      become: true
+      ansible.builtin.yum:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
 
-  - name: Add jenkins user to docker group
-    become: true
-    ansible.builtin.user:
-      name: "{{ username }}"
-      groups: docker
+    - name: Add jenkins user to docker group
+      become: true
+      ansible.builtin.user:
+        name: "{{ username }}"
+        groups: docker
 
-  - name: Restart docker
-    become: true
-    ansible.builtin.systemd:
-      name: docker
-      state: restarted
-      enabled: true
+    - name: Restart docker
+      become: true
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+        enabled: true
 
-  - name: Install agent.jar
-    become: true
-    get_url:
-      url: "http://{{ hostvars['master']['ansible_host'] }}:8080/jnlpJars/agent.jar"
-      dest: "{{ directory }}"
-    register: install_agent
-    until: install_agent is succeeded
-    retries: 10
-    timeout: 10
+    - name: Install agent.jar
+      become: true
+      ansible.builtin.get_url:
+        url: "http://{{ hostvars['master']['ansible_host'] }}:8080/jnlpJars/agent.jar"
+        dest: "{{ directory }}"
+        mode: '0644'
+      register: install_agent
+      until: install_agent is succeeded
+      retries: 10
+      timeout: 10
 
 - name: Jenkins Configuration
   hosts: master
   tasks:
 
-  - name: Wait 20 seconds
-    wait_for:
-      timeout=20
+    - name: Wait 20 seconds
+      ansible.builtin.wait_for:
+        timeout: 20
 
-  - name: Check file
-    become: true
-    ansible.builtin.stat:
-      path: "/var/lib/jenkins/secrets/initialAdminPassword"
-    register: script
+    - name: Check file
+      become: true
+      ansible.builtin.stat:
+        path: "/var/lib/jenkins/secrets/initialAdminPassword"
+      register: script
 
-  - name: Init admin password
-    become: true
-    command: "cat /var/lib/jenkins/secrets/initialAdminPassword"
-    changed_when: false
-    register: result
-    when: script.stat.exists
+    - name: Init admin password
+      become: true
+      ansible.builtin.command: "cat /var/lib/jenkins/secrets/initialAdminPassword"
+      changed_when: false
+      register: result
+      when: script.stat.exists
 
-  - name: Print admin password
-    debug:
-      var: result.stdout
-    when: script.stat.exists
+    - name: Print admin password
+      ansible.builtin.debug:
+        var: result.stdout
+      when: script.stat.exists
+...
